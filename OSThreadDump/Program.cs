@@ -11,15 +11,43 @@ namespace OSThreadDump
 {
     class Program
     {
+        static Dictionary<string, List<string>> process_sets = new Dictionary<string, List<string>>()
+        {
+            { "all",  new List<string> { "LogServer.exe", "DeployService.exe", "CompilerService.exe", "Scheduler.exe", "SMSConnector.exe", "w3wp.exe" } },
+            { "iis",  new List<string> { "w3wp.exe" } },
+            // currently disabled because of arch differences (32bit vs 64)
+            // { "devtools",  new List<string> { "ServiceStudio.exe", "IntegrationStudio.exe" } },
+            { "services",  new List<string> { "LogServer.exe", "DeployService.exe", "CompilerService.exe", "Scheduler.exe", "SMSConnector.exe" } }
+        };
         static void Main(string[] args)
         {
-            foreach (var p in Process.GetProcesses())
+            string process_set_id = "all";
+
+            if (args.Length >= 1)
             {
-                string filename = GetProcessFilename(p);
-                if (filename.EndsWith("w3wp.exe"))
+                process_set_id = args[0];
+            }
+
+            using (TextWriter writer = new StreamWriter(File.Create("threads_" + DateTime.Now.ToString("yyyy-MM-ddTHHmmss") + ".log")))
+            {
+                writer.WriteLine(DateTime.Now.ToString());
+
+                if (!process_sets.ContainsKey(process_set_id))
                 {
-                    Console.WriteLine(p.Id + " " + p.ProcessName + " " + filename);
-                    Console.WriteLine(GetThreadDump(p.Id));
+                    Console.WriteLine("Must specify valid process set: all iis services");
+                    return;
+                }
+
+                List<string> process_set = process_sets[process_set_id];
+
+                foreach (var p in Process.GetProcesses())
+                {
+                    string filename = GetProcessFilename(p);
+                    if (process_set.Any(f => filename.EndsWith(f)))
+                    {
+                        writer.WriteLine(p.Id + " " + p.ProcessName + " " + filename);
+                        writer.WriteLine(GetThreadDump(p.Id));
+                    }
                 }
             }
         }
@@ -30,8 +58,7 @@ namespace OSThreadDump
 
             using (var dataTarget = DataTarget.AttachToProcess(pid, 5000, AttachFlag.Passive))
             {
-                // Console.WriteLine(dataTarget.ClrVersions.First().DacInfo.FileName);
-                // Console.WriteLine(dataTarget.ClrVersions.First().Version);
+                writer.WriteLine(dataTarget.ClrVersions.First().Version);
                 var runtime = dataTarget.ClrVersions.First().CreateRuntime();
 
                 foreach (var domain in runtime.AppDomains)
