@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.IO;
 using Microsoft.Diagnostics.Runtime;
 using System.Diagnostics;
+using System.Threading;
 
 namespace OSThreadDump
 {
@@ -22,35 +23,51 @@ namespace OSThreadDump
         static void Main(string[] args)
         {
             string process_set_id = "all";
+            int interval = 0;
 
             if (args.Length >= 1)
             {
                 process_set_id = args[0];
             }
-
-            using (TextWriter writer = new StreamWriter(File.Create("threads_" + DateTime.Now.ToString("yyyy-MM-ddTHHmmss") + ".log")))
+            if (args.Length >= 2)
             {
-                writer.WriteLine(DateTime.Now.ToString());
+                interval = Int32.Parse(args[1]);
+            }
 
-                if (!process_sets.ContainsKey(process_set_id))
+
+            if (!process_sets.ContainsKey(process_set_id))
+            {
+                Console.WriteLine("Must specify valid process set: all iis services");
+                return;
+            }
+
+            List<string> process_set = process_sets[process_set_id];
+
+            do
+            {
+                Stopwatch sw = new Stopwatch();
+                sw.Start();
+                using (TextWriter writer = new StreamWriter(File.Create("threads_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".log")))
                 {
-                    Console.WriteLine("Must specify valid process set: all iis services");
-                    return;
-                }
+                    writer.WriteLine(DateTime.Now.ToString());
 
-                List<string> process_set = process_sets[process_set_id];
-
-                foreach (var p in Process.GetProcesses())
-                {
-                    string filename = GetProcessFilename(p);
-                    if (process_set.Any(f => filename.EndsWith(f)))
+                    foreach (var p in Process.GetProcesses())
                     {
-                        writer.WriteLine(p.Id + " " + p.ProcessName + " " + filename);
-                        writer.WriteLine(GetThreadDump(p.Id));
+                        string filename = GetProcessFilename(p);
+                        if (process_set.Any(f => filename.EndsWith(f)))
+                        {
+                            writer.WriteLine(p.Id + " " + p.ProcessName + " " + filename);
+                            writer.WriteLine(GetThreadDump(p.Id));
+                        }
                     }
                 }
-            }
+                sw.Stop();
+                Console.WriteLine(sw.ElapsedMilliseconds);
+                Thread.Sleep(interval * 1000 - (int)sw.ElapsedMilliseconds);
+            } while (interval > 0);
         }
+
+        
 
         public static string GetThreadDump(int pid)
         {
