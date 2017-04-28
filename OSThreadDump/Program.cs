@@ -62,8 +62,10 @@ namespace OSThreadDump
                     }
                 }
                 sw.Stop();
-                Console.WriteLine(sw.ElapsedMilliseconds);
-                Thread.Sleep(interval * 1000 - (int)sw.ElapsedMilliseconds);
+                Console.WriteLine(DateTime.Now.ToString() + " " + sw.ElapsedMilliseconds);
+                // wait at least twice as long as it took to process
+                // try to keep up with the defined interval
+                Thread.Sleep(Math.Max(interval * 1000 - (int)sw.ElapsedMilliseconds, 2* (int)sw.ElapsedMilliseconds));
             } while (interval > 0);
         }
 
@@ -71,38 +73,39 @@ namespace OSThreadDump
 
         public static string GetThreadDump(int pid)
         {
-            StringWriter writer = new StringWriter();
-
-            using (var dataTarget = DataTarget.AttachToProcess(pid, 5000, AttachFlag.Passive))
+            using (StringWriter writer = new StringWriter())
             {
-                writer.WriteLine(dataTarget.ClrVersions.First().Version);
-                var runtime = dataTarget.ClrVersions.First().CreateRuntime();
 
-                foreach (var domain in runtime.AppDomains)
+                using (var dataTarget = DataTarget.AttachToProcess(pid, 5000, AttachFlag.Passive))
                 {
-                    writer.WriteLine("Domain " + domain.Name);
-                }
-                writer.WriteLine();
+                    writer.WriteLine(dataTarget.ClrVersions.First().Version);
+                    var runtime = dataTarget.ClrVersions.First().CreateRuntime();
 
-                foreach (var t in runtime.Threads)
-                {
-                    if (!t.IsAlive)
-                        continue;
-
-                    if (t.StackTrace.Count == 0)
-                        continue;
-
-                    writer.WriteLine("Thread " + t.ManagedThreadId + ": ");
-
-                    foreach (var frame in t.EnumerateStackTrace())
+                    foreach (var domain in runtime.AppDomains)
                     {
-                        writer.WriteLine("\t" + frame.ToString());
+                        writer.WriteLine("Domain " + domain.Name);
                     }
                     writer.WriteLine();
-                }
-            }
 
-            return writer.ToString();
+                    foreach (var t in runtime.Threads)
+                    {
+                        if (!t.IsAlive)
+                            continue;
+
+                        if (t.StackTrace.Count == 0)
+                            continue;
+
+                        writer.WriteLine("Thread " + t.ManagedThreadId + ": ");
+
+                        foreach (var frame in t.EnumerateStackTrace())
+                        {
+                            writer.WriteLine("\t" + frame.ToString());
+                        }
+                        writer.WriteLine();
+                    }
+                }
+                return writer.ToString();
+            }
         }
 
 
