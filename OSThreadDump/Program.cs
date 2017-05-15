@@ -23,6 +23,7 @@ namespace OSThreadDump
         static void Main(string[] args)
         {
             string process_set_id = "all";
+            AttachFlag mode = AttachFlag.Passive;
             int interval = 0;
 
             if (args.Length >= 1)
@@ -34,6 +35,24 @@ namespace OSThreadDump
                 interval = Int32.Parse(args[1]);
             }
 
+            if (args.Length >= 3)
+            {
+                switch (args[2])
+                {
+                    case "-Passive":
+                        mode = AttachFlag.Passive;
+                        break;
+                    case "-NonInvasive":
+                        mode = AttachFlag.NonInvasive;
+                        break;
+                    case "-Invasive":
+                        mode = AttachFlag.Invasive;
+                        break;
+                    default:
+                        Console.WriteLine("Invalid attach mode. Valid modes: -Passive -NonInvasive -Invasive");
+                        return;
+                }
+            }
 
             if (!process_sets.ContainsKey(process_set_id))
             {
@@ -42,7 +61,6 @@ namespace OSThreadDump
             }
 
             List<string> process_set = process_sets[process_set_id];
-
             do
             {
                 Stopwatch sw = new Stopwatch();
@@ -57,54 +75,64 @@ namespace OSThreadDump
                         if (process_set.Any(f => filename.EndsWith(f)))
                         {
                             writer.WriteLine(p.Id + " " + p.ProcessName + " " + filename);
-                            writer.WriteLine(GetThreadDump(p.Id));
+                            writer.WriteLine(GetThreadDump(p.Id, mode));
                         }
                     }
                 }
                 sw.Stop();
-                Console.WriteLine(DateTime.Now.ToString() + " " + sw.ElapsedMilliseconds);
                 // wait at least twice as long as it took to process
                 // try to keep up with the defined interval
-                Thread.Sleep(Math.Max(interval * 1000 - (int)sw.ElapsedMilliseconds, 2* (int)sw.ElapsedMilliseconds));
+                Thread.Sleep(Math.Max(interval * 1000 - (int)sw.ElapsedMilliseconds, 2*(int)sw.ElapsedMilliseconds));
             } while (interval > 0);
         }
 
-        
 
-        public static string GetThreadDump(int pid)
+
+        public static string GetThreadDump(int pid, AttachFlag mode)
         {
             using (StringWriter writer = new StringWriter())
             {
-
-                using (var dataTarget = DataTarget.AttachToProcess(pid, 5000, AttachFlag.Passive))
-                {
-                    writer.WriteLine(dataTarget.ClrVersions.First().Version);
-                    var runtime = dataTarget.ClrVersions.First().CreateRuntime();
-
-                    foreach (var domain in runtime.AppDomains)
+                try {
+                    using (var dataTarget = DataTarget.AttachToProcess(pid, 5000, mode))
                     {
-                        writer.WriteLine("Domain " + domain.Name);
-                    }
-                    writer.WriteLine();
+                        writer.WriteLine(dataTarget.ClrVersions.First().Version);
+                        var runtime = dataTarget.ClrVersions.First().CreateRuntime();
 
-                    foreach (var t in runtime.Threads)
-                    {
-                        if (!t.IsAlive)
-                            continue;
-
-                        if (t.StackTrace.Count == 0)
-                            continue;
-
-                        writer.WriteLine("Thread " + t.ManagedThreadId + ": ");
-
-                        foreach (var frame in t.EnumerateStackTrace())
+                        foreach (var domain in runtime.AppDomains)
                         {
-                            writer.WriteLine("\t" + frame.ToString());
+                            writer.WriteLine("Domain " + domain.Name);
                         }
                         writer.WriteLine();
+                        foreach (var t in runtime.Threads)
+                        {
+                            if (!t.IsAlive)
+                                continue;
+
+                            if (t.StackTrace.Count == 0)
+                                continue;
+
+                            writer.WriteLine("Thread " + t.ManagedThreadId + ": ");
+                            int loop_count = 0;
+                            foreach (var frame in t.EnumerateStackTrace())
+                            {
+                                writer.WriteLine("\t" + frame.StackPointer.ToString("x16") + " " + frame.ToString());
+                                loop_count++;
+                                if (loop_count > 200)
+                                {
+                                    writer.WriteLine("\t[CORRUPTED]");
+                                    break;
+                                }
+                            }
+                            writer.WriteLine();
+                        }
                     }
+                    return writer.ToString();
+                } catch
+                {
+                    // This is mostly to catch the "invalid architecture" error.
+                    // Any error that happens we want to ignore and return what we have.
+                    return writer.ToString();
                 }
-                return writer.ToString();
             }
         }
 
