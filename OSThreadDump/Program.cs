@@ -26,32 +26,37 @@ namespace OSThreadDump
             AttachFlag mode = AttachFlag.Passive;
             int interval = 0;
 
-            if (args.Length >= 1)
+            // command line parsing
+            int i = 0;
+            while (i < args.Length)
             {
-                process_set_id = args[0];
-            }
-            if (args.Length >= 2)
-            {
-                interval = Int32.Parse(args[1]);
-            }
-
-            if (args.Length >= 3)
-            {
-                switch (args[2])
+                switch(args[i])
                 {
                     case "-Passive":
                         mode = AttachFlag.Passive;
-                        break;
+                        i++;
+                        continue;
                     case "-NonInvasive":
                         mode = AttachFlag.NonInvasive;
-                        break;
+                        i++;
+                        continue;
                     case "-Invasive":
                         mode = AttachFlag.Invasive;
-                        break;
-                    default:
-                        Console.WriteLine("Invalid attach mode. Valid modes: -Passive -NonInvasive -Invasive");
-                        return;
+                        i++;
+                        continue;
+                    case "-Interval":
+                        i++;
+                        if (args.Length < i)
+                        {
+                            Console.WriteLine("Interval takes at least one argument");
+                            return;
+                        }
+                        interval = Int32.Parse(args[i]);
+                        i++;
+                        continue;
                 }
+                process_set_id = args[i];
+                i++;
             }
 
             if (!process_sets.ContainsKey(process_set_id))
